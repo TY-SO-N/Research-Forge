@@ -158,6 +158,7 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
     
     # Extract unique journals from the data
     journals = {}
+    journal_urls = {}  # Add this to store URLs
     
     # Process based on the structure of the API response
     if 'results' in journals_data:
@@ -170,6 +171,19 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
                     
                     # Create comprehensive journal description
                     journal_desc = item['title'] if 'title' in item else ""
+                    
+                    # Store URL if available - FIX URL CONSTRUCTION HERE
+                    if 'id' in item:
+                        # Check if DOI is available first
+                        if 'doi' in item and item['doi']:
+                            journal_urls[journal_name] = item['doi']
+                        # Otherwise use OpenAlex ID but ensure we don't duplicate the base URL
+                        elif item['id'].startswith('https://'):
+                            journal_urls[journal_name] = item['id']
+                        else:
+                            # If ID doesn't include https://, add the OpenAlex base URL
+                            journal_urls[journal_name] = f"https://openalex.org/{item['id'].replace('https://openalex.org/', '')}"
+                    
                     # Add abstract if available
                     if 'abstract_inverted_index' in item and isinstance(item['abstract_inverted_index'], dict):
                         # Reconstruct abstract from inverted index
@@ -188,6 +202,17 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
                 journal_name = item['display_name']
                 journal_desc = item.get('works_count', "") or item.get('description', "")
                 
+                # Store URL if available - FIX URL CONSTRUCTION HERE
+                if 'id' in item:
+                    if 'homepage_url' in item and item['homepage_url']:
+                        journal_urls[journal_name] = item['homepage_url']
+                    elif item['id'].startswith('https://'):
+                        journal_urls[journal_name] = item['id']  
+                    else:
+                        # Ensure we don't duplicate the base URL
+                        item_id = item['id'].replace('https://openalex.org/', '')
+                        journal_urls[journal_name] = f"https://openalex.org/{item_id}"
+                
                 if journal_name not in journals:
                     journals[journal_name] = str(journal_desc)
     
@@ -197,19 +222,67 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
             # Generate optimized embedding for journal
             journal_embedding = generate_optimized_embedding(journal_desc, model)
             similarity = cosine_similarity(paper_embedding, journal_embedding)[0][0]
-            journal_scores.append((journal_name, similarity))
+            url = journal_urls.get(journal_name, '')  # Get URL or empty string if not found
+            journal_scores.append((journal_name, similarity, url))
         except Exception as e:
             print(f"Error processing journal {journal_name}: {e}")
     
     # Sort by similarity score and return top N
     journal_scores.sort(key=lambda x: x[1], reverse=True)
     return journal_scores[:top_n]
-
+    
 # Initialize models at startup
 nlp, model = initialize_models()
 
 @app.route('/api/recommend', methods=['POST'])
 def recommend_journals():
+    try:
+        # Get data from request
+        data = request.json
+        title = data.get('title', '')
+        abstract = data.get('abstract', '')
+        
+        # Process paper with enhanced similarity approach
+        paper_data = process_paper_for_similarity(title, abstract, nlp, model)
+        
+        # Fetch journal data using the extracted topics
+        search_query = " ".join(paper_data["topics"][:3])  # Use top 3 topics for search
+        journals_data = fetch_journal_data(search_query)
+        
+        if not journals_data:
+            return jsonify({
+                'error': 'Failed to fetch journal data',
+                'recommendations': []
+            }), 500
+        
+        # Find matching journals with optimized similarity approach
+        journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
+        
+        # Format recommendations
+        recommendations = [
+            {
+                'journal': journal,
+                'score': float(score),  # Convert numpy float to Python float for JSON
+                'match_percentage': f"{float(score) * 100:.1f}%",
+                'url': url or '#'  # Include URL, default to # if not available
+            }
+            for journal, score, url in journal_matches  # Now unpacking 3 values
+        ]
+        
+        return jsonify({
+            'recommendations': recommendations,
+            'paper': {
+                'title': title,
+                'abstract': abstract,
+                'topics': paper_data["topics"]
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'recommendations': []
+        }), 500
     try:
         # Get data from request
         data = request.json

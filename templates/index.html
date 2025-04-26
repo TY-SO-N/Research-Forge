@@ -77,6 +77,16 @@
             font-size: 18px;
             font-weight: bold;
         }
+        .journal-link {
+            color: #ffd700;
+            text-decoration: none;
+            display: block;
+            transition: color 0.3s;
+        }
+        .journal-link:hover {
+            color: #e6c200;
+            text-decoration: underline;
+        }
         .loading {
             text-align: center;
             display: none;
@@ -106,6 +116,21 @@
             margin-bottom: 5px;
             border-radius: 12px;
             font-size: 12px;
+        }
+        .view-paper-btn {
+            background-color: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            border: 1px solid #ffd700;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-size: 12px;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .view-paper-btn:hover {
+            background-color: rgba(255, 215, 0, 0.4);
         }
     </style>
 </head>
@@ -175,7 +200,7 @@
                 document.getElementById('loadingIndicator').style.display = 'none';
                 document.getElementById('resultsSection').style.display = 'block';
                 
-                // Display recommendations without match score
+                // Display recommendations with clickable links
                 const resultsContainer = document.getElementById('journalResults');
                 resultsContainer.innerHTML = '';
                 
@@ -184,8 +209,18 @@
                         const journalCard = document.createElement('div');
                         journalCard.className = 'journal-card';
                         
+                        // Create journal name as a link
+                        const journalLink = journal.url && journal.url !== '#' ? 
+                            `<a href="${journal.url}" class="journal-link" target="_blank">${journal.journal}</a>` : 
+                            `<span class="journal-name">${journal.journal}</span>`;
+                        
+                        // Add view paper button if URL is available
+                        const viewPaperBtn = journal.url && journal.url !== '#' ? 
+                            `<a href="${journal.url}" class="view-paper-btn" target="_blank">View Paper</a>` : '';
+                        
                         journalCard.innerHTML = `
-                            <div class="journal-name">${journal.journal}</div>
+                            <div class="journal-name">${journalLink}</div>
+                            ${viewPaperBtn}
                         `;
                         
                         resultsContainer.appendChild(journalCard);
