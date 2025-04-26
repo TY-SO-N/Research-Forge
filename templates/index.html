@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NLP Research Forge</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #032b4a;
+            color: white;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 {
+            color: white;
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+        h2 {
+            color: #ffd700;
+            margin-top: 0;
+        }
+        .input-section {
+            background-color: #05396b;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        textarea {
+            height: 150px;
+        }
+        button {
+            background-color: #ffd700;
+            color: #032b4a;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #e6c200;
+        }
+        .results-section {
+            background-color: #05396b;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        .journal-card {
+            background-color: #0a4d7a;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .journal-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .match-score {
+            display: inline-block;
+            background-color: #ffd700;
+            color: #032b4a;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .topics {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        .topics span {
+            display: inline-block;
+            background-color: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NLP Research Forge</h1>
+        <h2>Journal Recommendation System</h2>
+    </header>
+    
+    <div class="input-section">
+        <h3>Submit Your Research Paper</h3>
+        <form id="paperForm">
+            <label for="paperTitle">Paper Title:</label>
+            <input type="text" id="paperTitle" name="paperTitle" placeholder="Enter the title of your research paper" required>
+            
+            <label for="paperAbstract">Abstract:</label>
+            <textarea id="paperAbstract" name="paperAbstract" placeholder="Paste your paper's abstract here..." required></textarea>
+            
+            <button type="submit">Find Matching Journals</button>
+        </form>
+    </div>
+    
+    <div class="loading" id="loadingIndicator">
+        <div class="spinner"></div>
+        <p>Analyzing your paper and finding matching journals...</p>
+    </div>
+    
+    <div class="results-section" id="resultsSection">
+        <h3>Recommended Journals</h3>
+        <div id="journalResults"></div>
+        
+        <div class="topics-section">
+            <h4>Detected Topics:</h4>
+            <div id="topicsContainer"></div>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('paperForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const title = document.getElementById('paperTitle').value;
+            const abstract = document.getElementById('paperAbstract').value;
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            
+            try {
+                // Replace with your API URL when deployed
+                const apiUrl = 'http://localhost:5000/api/recommend';
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        abstract: abstract
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Hide loading and show results
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('resultsSection').style.display = 'block';
+                
+                // Display recommendations
+                const resultsContainer = document.getElementById('journalResults');
+                resultsContainer.innerHTML = '';
+                
+                if (data.recommendations && data.recommendations.length > 0) {
+                    data.recommendations.forEach(journal => {
+                        const journalCard = document.createElement('div');
+                        journalCard.className = 'journal-card';
+                        
+                        journalCard.innerHTML = `
+                            <div class="journal-name">${journal.journal}</div>
+                            <div class="match-score">Match Score: ${journal.match_percentage}</div>
+                        `;
+                        
+                        resultsContainer.appendChild(journalCard);
+                    });
+                } else {
+                    resultsContainer.innerHTML = '<p>No matching journals found. Try adjusting your paper content.</p>';
+                }
+                
+                // Display topics
+                const topicsContainer = document.getElementById('topicsContainer');
+                topicsContainer.innerHTML = '';
+                
+                if (data.paper && data.paper.topics && data.paper.topics.length > 0) {
+                    data.paper.topics.forEach(topic => {
+                        const topicSpan = document.createElement('span');
+                        topicSpan.textContent = topic;
+                        topicsContainer.appendChild(topicSpan);
+                    });
+                } else {
+                    topicsContainer.innerHTML = '<p>No specific topics detected.</p>';
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loadingIndicator').style.display = 'none';
+                alert('An error occurred while processing your request. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
