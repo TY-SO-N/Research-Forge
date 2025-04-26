@@ -76,9 +76,115 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
     ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS paper_ratings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        paper_title TEXT NOT NULL,
+        paper_abstract TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
     
     conn.commit()
     conn.close()
+
+def save_paper_rating_to_db(user_id, paper_title, paper_abstract, rating):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if rating already exists
+    cursor.execute(
+        "SELECT id FROM paper_ratings WHERE user_id = ? AND paper_title = ?",
+        (user_id, paper_title)
+    )
+    existing = cursor.fetchone()
+    
+    if existing:
+        # Update existing rating
+        cursor.execute(
+            "UPDATE paper_ratings SET rating = ? WHERE id = ?",
+            (rating, existing['id'])
+        )
+    else:
+        # Insert new rating
+        cursor.execute(
+            "INSERT INTO paper_ratings (user_id, paper_title, paper_abstract, rating) VALUES (?, ?, ?, ?)",
+            (user_id, paper_title, paper_abstract, rating)
+        )
+    
+    conn.commit()
+    conn.close()
+
+def get_user_paper_ratings(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT paper_title, paper_abstract, rating, created_at FROM paper_ratings WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,)
+    )
+    ratings = cursor.fetchall()
+    conn.close()
+    
+    return ratings
+
+def get_specific_paper_rating(user_id, paper_title):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT rating FROM paper_ratings WHERE user_id = ? AND paper_title = ?",
+        (user_id, paper_title)
+    )
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result['rating'] if result else 0
+
+@app.route('/api/rate-paper', methods=['POST'])
+def rate_paper():
+    try:
+        # Check if user is logged in
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.json
+        paper_title = data.get('title')
+        paper_abstract = data.get('abstract')
+        rating = data.get('rating')
+        
+        if not paper_title or not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+            return jsonify({'error': 'Invalid rating data'}), 400
+            
+        # Store the rating associated with the user
+        save_paper_rating_to_db(current_user.id, paper_title, paper_abstract, rating)
+        
+        return jsonify({'success': True, 'message': 'Paper rating saved'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get-paper-ratings', methods=['GET'])
+@login_required
+def get_paper_ratings():
+    try:
+        ratings = get_user_paper_ratings(current_user.id)
+        
+        formatted_ratings = []
+        for rating in ratings:
+            formatted_ratings.append({
+                'title': rating['paper_title'],
+                'abstract': rating['paper_abstract'],
+                'rating': rating['rating'],
+                'date': rating['created_at']
+            })
+        
+        return jsonify({'ratings': formatted_ratings})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 
 # User loader function for Flask-Login
 @login_manager.user_loader
@@ -600,6 +706,86 @@ def recommend_journals():
             journal_matches = apply_rating_boost(journal_matches)
         
         user_ratings = {}
+        user_paper_rating = 0
+        
+        # Get user's ratings if authenticated
+        if current_user.is_authenticated:
+            # Get journal ratings
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT journal_name, rating FROM ratings WHERE user_id = ?",
+                (current_user.id,)
+            )
+            for row in cursor.fetchall():
+                user_ratings[row['journal_name']] = row['rating']
+            
+            # Get paper rating if exists
+            cursor.execute(
+                "SELECT rating FROM paper_ratings WHERE user_id = ? AND paper_title = ?",
+                (current_user.id, title)
+            )
+            paper_rating = cursor.fetchone()
+            if paper_rating:
+                user_paper_rating = paper_rating['rating']
+            
+            conn.close()
+        
+        # Format recommendations
+        recommendations = [
+            {
+                'journal': journal,
+                'score': float(score),
+                'match_percentage': f"{float(score) * 100:.1f}%",
+                'url': url or '#',
+                'user_rating': user_ratings.get(journal, 0)
+            }
+            for journal, score, url in journal_matches
+        ]
+        
+        return jsonify({
+            'recommendations': recommendations,
+            'paper': {
+                'title': title,
+                'abstract': abstract,
+                'topics': paper_data["topics"],
+                'user_rating': user_paper_rating
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'recommendations': []
+        }), 500
+    try:
+        # Get data from request
+        data = request.json
+        title = data.get('title', '')
+        abstract = data.get('abstract', '')
+        include_ratings = data.get('includeRatings', False)
+        
+        # Process paper with enhanced similarity approach
+        paper_data = process_paper_for_similarity(title, abstract, nlp, model)
+        
+        # Fetch journal data using the extracted topics
+        search_query = " ".join(paper_data["topics"][:3])  # Use top 3 topics for search
+        journals_data = fetch_journal_data(search_query)
+        
+        if not journals_data:
+            return jsonify({
+                'error': 'Failed to fetch journal data',
+                'recommendations': []
+            }), 500
+        
+        # Find matching journals with optimized similarity approach
+        journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
+        
+        # Apply rating boost if requested
+        if include_ratings:
+            journal_matches = apply_rating_boost(journal_matches)
+        
+        user_ratings = {}
         if current_user.is_authenticated:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -637,6 +823,35 @@ def recommend_journals():
             'error': str(e),
             'recommendations': []
         }), 500
+
+// Function to submit paper rating
+function ratePaper(title, abstract, rating) {
+    fetch('/api/rate-paper', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            title: title,
+            abstract: abstract,
+            rating: rating
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Rating saved successfully!');
+            // Update UI to show the new rating
+            document.getElementById('paper-rating-display').innerText = rating;
+        } else {
+            alert('Error saving rating: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving rating. Please try again.');
+    });
+}
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
