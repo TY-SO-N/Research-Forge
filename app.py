@@ -599,13 +599,26 @@ def recommend_journals():
         if include_ratings:
             journal_matches = apply_rating_boost(journal_matches)
         
+        user_ratings = {}
+        if current_user.is_authenticated:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT journal_name, rating FROM ratings WHERE user_id = ?",
+                (current_user.id,)
+            )
+            for row in cursor.fetchall():
+                user_ratings[row['journal_name']] = row['rating']
+            conn.close()
+        
         # Format recommendations
         recommendations = [
             {
                 'journal': journal,
-                'score': float(score),  # Convert numpy float to Python float for JSON
+                'score': float(score),
                 'match_percentage': f"{float(score) * 100:.1f}%",
-                'url': url or '#'  # Include URL, default to # if not available
+                'url': url or '#',
+                'user_rating': user_ratings.get(journal, 0)  # Add this line
             }
             for journal, score, url in journal_matches
         ]
