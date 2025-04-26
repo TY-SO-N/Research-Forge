@@ -31,12 +31,12 @@ def initialize_models():
         subprocess.call(['python', '-m', 'spacy', 'download', 'en_core_web_sm'])
         nlp = spacy.load('en_core_web_sm')
     
-    # Load sentence transformer model
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    # Load scientific text-specific model for better results
+    model = SentenceTransformer('allenai/specter')
     
     return nlp, model
 
-# Function to fetch journal data from OpenAlex API
+# Updated function to fetch data from OpenAlex API
 def fetch_journal_data(query="computer science", limit=100):
     # Base URL for the OpenAlex API
     base_url = "https://api.openalex.org/works"
@@ -44,6 +44,8 @@ def fetch_journal_data(query="computer science", limit=100):
     # For searching venues specifically, we can use a filter
     encoded_query = quote(query)
     url = f"{base_url}?filter=default.search:{encoded_query}&per-page={limit}"
+    
+    print(f"Requesting URL: {url}")
     
     # Add a user-agent header as some APIs require this
     headers = {
@@ -58,7 +60,9 @@ def fetch_journal_data(query="computer science", limit=100):
         print(f"Error: {response.status_code} - {response.text}")
         
         # Try an alternative approach
+        print("Trying alternative endpoint...")
         venues_url = f"https://api.openalex.org/venues?search={encoded_query}&per-page={limit}"
+        print(f"Requesting URL: {venues_url}")
         alt_response = requests.get(venues_url, headers=headers)
         
         if alt_response.status_code == 200:
@@ -67,21 +71,33 @@ def fetch_journal_data(query="computer science", limit=100):
             print(f"Alternative request failed: {alt_response.status_code}")
             return None
 
-# Preprocess text
+# Improved text preprocessing focusing on technical terms
 def preprocess_text(text):
+    # Remove newlines and extra spaces
+    text = re.sub(r'\s+', ' ', text)
+    # Keep important technical characters like hyphens
+    text = re.sub(r'[^\w\s\-]', '', text)
     # Convert to lowercase
     text = text.lower()
     
-    # Remove special characters and numbers
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    # Keep important technical words that might be in stopwords
+    custom_stopwords = set(stopwords.words('english')) - {'not', 'no', 'against', 'between', 'through', 
+                                                         'above', 'below', 'up', 'down', 'under', 'over'}
+    words = text.split()
+    filtered_text = ' '.join([word for word in words if word not in custom_stopwords])
+    return filtered_text
+
+# Function to create optimized embeddings for similarity
+def generate_optimized_embedding(text, model):
+    """Generate embeddings optimized for similarity matching"""
+    # Preprocess
+    processed_text = preprocess_text(text)
     
-    # Tokenize and remove stopwords
-    stop_words = set(stopwords.words('english'))
-    tokens = nltk.word_tokenize(text)
-    filtered_tokens = [w for w in tokens if w not in stop_words]
+    # Normalize the embedding for better cosine similarity
+    embedding = model.encode(processed_text)
+    normalized_embedding = embedding / np.linalg.norm(embedding)
     
-    # Join tokens back into a string
-    return ' '.join(filtered_tokens)
+    return normalized_embedding.reshape(1, -1)
 
 # Extract key topics from text using spaCy
 def extract_topics(text, nlp, top_n=5):
@@ -107,12 +123,37 @@ def extract_topics(text, nlp, top_n=5):
     sorted_topics = sorted(topic_freq.items(), key=lambda x: x[1], reverse=True)
     return [topic for topic, freq in sorted_topics[:top_n]]
 
-# Generate embeddings for text
-def generate_embeddings(text, model):
-    return model.encode(text)
+# Enhanced paper processing with focus on technical terms
+def process_paper_for_similarity(title, abstract, nlp, model):
+    """Process paper with focus on maximizing similarity to relevant journals"""
+    # Give more weight to title by repeating it
+    combined_text = title + " " + title + " " + abstract
+    
+    # Extract and add technical keywords to boost similarity
+    doc = nlp(title + " " + abstract)
+    technical_terms = []
+    
+    # Extract technical noun phrases and entities
+    for chunk in doc.noun_chunks:
+        technical_terms.append(chunk.text)
+    
+    # Add extracted terms to boost similarity
+    augmented_text = combined_text + " " + " ".join(technical_terms)
+    
+    # Generate embedding from this augmented text
+    embedding = generate_optimized_embedding(augmented_text, model)
+    
+    # Extract topics
+    topics = extract_topics(combined_text, nlp)
+    
+    return {
+        "text": augmented_text,
+        "embedding": embedding,
+        "topics": topics
+    }
 
-# Calculate similarity between paper and journals
-def find_matching_journals(paper_embedding, journals_data, model, top_n=3):
+# Match paper to journals focusing on cosine similarity
+def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
     journal_scores = []
     
     # Extract unique journals from the data
@@ -126,7 +167,19 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=3):
                 journal_info = item['host_venue']
                 if 'display_name' in journal_info and journal_info['display_name']:
                     journal_name = journal_info['display_name']
+                    
+                    # Create comprehensive journal description
                     journal_desc = item['title'] if 'title' in item else ""
+                    # Add abstract if available
+                    if 'abstract_inverted_index' in item and isinstance(item['abstract_inverted_index'], dict):
+                        # Reconstruct abstract from inverted index
+                        abstract_words = []
+                        for word, positions in item['abstract_inverted_index'].items():
+                            for pos in positions:
+                                while len(abstract_words) <= pos:
+                                    abstract_words.append("")
+                                abstract_words[pos] = word
+                        journal_desc += " " + " ".join(abstract_words)
                     
                     if journal_name not in journals:
                         journals[journal_name] = journal_desc
@@ -141,8 +194,9 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=3):
     # Calculate similarity scores
     for journal_name, journal_desc in journals.items():
         try:
-            journal_embedding = model.encode(journal_desc)
-            similarity = cosine_similarity([paper_embedding], [journal_embedding])[0][0]
+            # Generate optimized embedding for journal
+            journal_embedding = generate_optimized_embedding(journal_desc, model)
+            similarity = cosine_similarity(paper_embedding, journal_embedding)[0][0]
             journal_scores.append((journal_name, similarity))
         except Exception as e:
             print(f"Error processing journal {journal_name}: {e}")
@@ -162,20 +216,11 @@ def recommend_journals():
         title = data.get('title', '')
         abstract = data.get('abstract', '')
         
-        # Combine title and abstract
-        paper_text = f"{title} {abstract}"
+        # Process paper with enhanced similarity approach
+        paper_data = process_paper_for_similarity(title, abstract, nlp, model)
         
-        # Preprocess text
-        processed_text = preprocess_text(paper_text)
-        
-        # Extract key topics
-        topics = extract_topics(paper_text, nlp)
-        
-        # Generate embeddings for the paper
-        paper_embedding = generate_embeddings(processed_text, model)
-        
-        # Fetch journal data using the topics
-        search_query = " ".join(topics[:3])  # Use top 3 topics for search
+        # Fetch journal data using the extracted topics
+        search_query = " ".join(paper_data["topics"][:3])  # Use top 3 topics for search
         journals_data = fetch_journal_data(search_query)
         
         if not journals_data:
@@ -184,8 +229,8 @@ def recommend_journals():
                 'recommendations': []
             }), 500
         
-        # Find matching journals
-        journal_matches = find_matching_journals(paper_embedding, journals_data, model)
+        # Find matching journals with optimized similarity approach
+        journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
         
         # Format recommendations
         recommendations = [
@@ -202,7 +247,7 @@ def recommend_journals():
             'paper': {
                 'title': title,
                 'abstract': abstract,
-                'topics': topics
+                'topics': paper_data["topics"]
             }
         })
     
@@ -219,16 +264,16 @@ def health_check():
 @app.route('/', methods=['GET'])
 def index():
     return render_template('index.html')
-
-@app.route('/', methods=['GET'])
-def index():
+    
+@app.route('/api', methods=['GET'])
+def api_info():
     return jsonify({
         "message": "Journal Recommendation API is running",
         "endpoints": {
             "/api/recommend": "POST - Get journal recommendations based on paper title and abstract",
             "/api/health": "GET - Check API health status"
         }
-    })    
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
