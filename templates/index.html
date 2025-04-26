@@ -132,6 +132,46 @@
         .view-paper-btn:hover {
             background-color: rgba(255, 215, 0, 0.4);
         }
+        /* Star Rating Styles */
+        .star-rating {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        .rating-title {
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .stars {
+            display: flex;
+            gap: 5px;
+        }
+        .star {
+            color: #ccc;
+            font-size: 20px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .star:hover, .star.active {
+            color: #ffd700;
+        }
+        .rating-feedback {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #8cff8c;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .rating-feedback.visible {
+            opacity: 1;
+        }
+        .previous-rating {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
     </style>
 </head>
 <body>
@@ -140,6 +180,88 @@
         <h2>Journal Recommendation System</h2>
     </header>
     
+    <!-- Add this navigation section after the header in your index.html -->
+<div class="nav-bar">
+    {% if session.username %}
+        <div class="user-welcome">Welcome, {{ session.username }}!</div>
+        <div class="nav-links">
+            <a href="{{ url_for('profile') }}" class="nav-link">Profile</a>
+            <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+        </div>
+    {% else %}
+        <div class="nav-links">
+            <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+            <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Add this CSS to your existing styles in index.html -->
+<style>
+    .nav-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        background-color: #05396b;
+        padding: 10px 20px;
+        border-radius: 5px;
+    }
+    .user-welcome {
+        color: #ffd700;
+        font-weight: bold;
+    }
+    .nav-links {
+        display: flex;
+        gap: 10px;
+    }
+    .nav-link {
+        color: white;
+        text-decoration: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        transition: background-color 0.3s;
+    }
+    .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    .flash-messages {
+        margin-bottom: 20px;
+    }
+    .flash-message {
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .flash-message.success {
+        background-color: rgba(0, 128, 0, 0.2);
+        border: 1px solid #008000;
+    }
+    .flash-message.danger {
+        background-color: rgba(255, 0, 0, 0.2);
+        border: 1px solid #ff0000;
+    }
+    .flash-message.warning {
+        background-color: rgba(255, 215, 0, 0.2);
+        border: 1px solid #ffd700;
+    }
+    .flash-message.info {
+        background-color: rgba(0, 191, 255, 0.2);
+        border: 1px solid #00bfff;
+    }
+</style>
+
+    <!-- Add this below the header and nav-bar but before the input-section -->
+    {% if get_flashed_messages() %}
+    <div class="flash-messages">
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="flash-message {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="input-section">
         <h3>Submit Your Research Paper</h3>
         <form id="paperForm">
@@ -169,6 +291,105 @@
     </div>
     
     <script>
+        // Utility function to sanitize URLs
+        function sanitizeUrl(url) {
+            // Fix URLs that have duplicated domain
+            if (url && url.includes('openalex.org/https://openalex.org/')) {
+                return url.replace('openalex.org/https://openalex.org/', 'openalex.org/');
+            }
+            // Fix URLs that start with 'https://https://'
+            if (url && url.startsWith('https://https://')) {
+                return url.replace('https://https://', 'https://');
+            }
+            return url;
+        }
+        
+        // Function to retrieve journal ratings from localStorage
+        function getJournalRatings() {
+            const ratingsJson = localStorage.getItem('journalRatings');
+            return ratingsJson ? JSON.parse(ratingsJson) : {};
+        }
+        
+        // Function to save a journal rating
+        function saveJournalRating(journalName, rating) {
+            const ratings = getJournalRatings();
+            ratings[journalName] = rating;
+            localStorage.setItem('journalRatings', JSON.stringify(ratings));
+        }
+        
+        // Create star rating component
+        function createStarRating(journalName, container) {
+            const ratings = getJournalRatings();
+            const previousRating = ratings[journalName] || 0;
+            
+            const ratingContainer = document.createElement('div');
+            ratingContainer.className = 'star-rating';
+            
+            const ratingTitle = document.createElement('div');
+            ratingTitle.className = 'rating-title';
+            ratingTitle.textContent = 'Rate this recommendation:';
+            
+            if (previousRating > 0) {
+                const prevRatingSpan = document.createElement('span');
+                prevRatingSpan.className = 'previous-rating';
+                prevRatingSpan.textContent = `(Previously rated: ${previousRating} star${previousRating !== 1 ? 's' : ''})`;
+                ratingTitle.appendChild(prevRatingSpan);
+            }
+            
+            const starsContainer = document.createElement('div');
+            starsContainer.className = 'stars';
+            
+            const feedbackMsg = document.createElement('div');
+            feedbackMsg.className = 'rating-feedback';
+            feedbackMsg.textContent = 'Thanks for your feedback!';
+            
+            // Create 5 stars
+            for (let i = 1; i <= 5; i++) {
+                const star = document.createElement('span');
+                star.className = 'star' + (i <= previousRating ? ' active' : '');
+                star.innerHTML = '★';
+                star.dataset.value = i;
+                
+                star.addEventListener('click', function() {
+                    const value = parseInt(this.dataset.value);
+                    
+                    // Update visual state
+                    const stars = starsContainer.querySelectorAll('.star');
+                    stars.forEach(s => {
+                        s.classList.toggle('active', parseInt(s.dataset.value) <= value);
+                    });
+                    
+                    // Save rating
+                    saveJournalRating(journalName, value);
+                    
+                    // Show feedback message
+                    feedbackMsg.classList.add('visible');
+                    setTimeout(() => {
+                        feedbackMsg.classList.remove('visible');
+                    }, 2000);
+                    
+                    // Send rating to server
+                    fetch('/api/rate-journal', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            journal: journalName,
+                            rating: value
+                        })
+                    }).catch(error => console.error('Error saving rating:', error));
+                });
+                
+                starsContainer.appendChild(star);
+            }
+            
+            ratingContainer.appendChild(ratingTitle);
+            ratingContainer.appendChild(starsContainer);
+            ratingContainer.appendChild(feedbackMsg);
+            container.appendChild(ratingContainer);
+        }
+        
         document.getElementById('paperForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -190,7 +411,8 @@
                     },
                     body: JSON.stringify({
                         title: title,
-                        abstract: abstract
+                        abstract: abstract,
+                        includeRatings: true // Tell backend to consider ratings
                     })
                 });
                 
@@ -210,18 +432,22 @@
                         journalCard.className = 'journal-card';
                         
                         // Create journal name as a link
-                        const journalLink = journal.url && journal.url !== '#' ? 
-                            `<a href="${journal.url}" class="journal-link" target="_blank">${journal.journal}</a>` : 
+                        const sanitizedUrl = sanitizeUrl(journal.url);
+                        const journalLink = sanitizedUrl && sanitizedUrl !== '#' ? 
+                            `<a href="${sanitizedUrl}" class="journal-link" target="_blank">${journal.journal}</a>` : 
                             `<span class="journal-name">${journal.journal}</span>`;
                         
                         // Add view paper button if URL is available
-                        const viewPaperBtn = journal.url && journal.url !== '#' ? 
-                            `<a href="${journal.url}" class="view-paper-btn" target="_blank">View Paper</a>` : '';
+                        const viewPaperBtn = sanitizedUrl && sanitizedUrl !== '#' ? 
+                            `<a href="${sanitizedUrl}" class="view-paper-btn" target="_blank">View Paper</a>` : '';
                         
                         journalCard.innerHTML = `
                             <div class="journal-name">${journalLink}</div>
                             ${viewPaperBtn}
                         `;
+                        
+                        // Add star rating system
+                        createStarRating(journal.journal, journalCard);
                         
                         resultsContainer.appendChild(journalCard);
                     });

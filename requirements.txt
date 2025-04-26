@@ -1,5 +1,7 @@
 flask
 flask-cors
+flask_login
+werkzeug
 pandas
 requests
 nltk

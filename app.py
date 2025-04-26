@@ -1,5 +1,8 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
+from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
 import pandas as pd
 import requests
 import json
@@ -12,11 +15,190 @@ import numpy as np
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+import os
+from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+app.secret_key = 'a9e3c1f4b6d982fc7a3b5d6cfe1234adf9087c2d3b6e9f0124c5d6a7b8c9e0f1'
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# User model
+class User(UserMixin):
+    def __init__(self, id, username, email):
+        self.id = id
+        self.username = username
+        self.email = email
+
+# Database functions
+def get_db_connection():
+    conn = sqlite3.connect('journal_recommender.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Create users table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    # Create sessions table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        session_id TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
+    
+    # Create ratings table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ratings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        journal_name TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# User loader function for Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,))
+    user_data = cursor.fetchone()
+    conn.close()
+    
+    if user_data:
+        return User(user_data['id'], user_data['username'], user_data['email'])
+    return None
+
+# User management functions
+def create_user(username, email, password):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if username or email already exists
+        cursor.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
+        if cursor.fetchone():
+            conn.close()
+            return False, "Username or email already exists"
+        
+        # Create new user
+        password_hash = generate_password_hash(password)
+        cursor.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (username, email, password_hash)
+        )
+        conn.commit()
+        conn.close()
+        return True, "User created successfully"
+    except Exception as e:
+        return False, str(e)
+
+def verify_user(username, password):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user and check_password_hash(user['password_hash'], password):
+            return True, user['id']
+        return False, None
+    except Exception as e:
+        print(f"Error verifying user: {e}")
+        return False, None
+
+def create_session(user_id):
+    import uuid
+    session_id = str(uuid.uuid4())
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO sessions (user_id, session_id) VALUES (?, ?)", (user_id, session_id))
+    conn.commit()
+    conn.close()
+    
+    return session_id
+
+def verify_session(session_id):
+    if not session_id:
+        return None
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM sessions WHERE session_id = ?", (session_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result['user_id'] if result else None
+
+def get_user_ratings(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT journal_name, rating, created_at FROM ratings WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,)
+    )
+    ratings = cursor.fetchall()
+    conn.close()
+    
+    return ratings
+
+def save_rating_to_db(user_id, journal, rating):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if rating already exists
+    cursor.execute(
+        "SELECT id FROM ratings WHERE user_id = ? AND journal_name = ?",
+        (user_id, journal)
+    )
+    existing = cursor.fetchone()
+    
+    if existing:
+        # Update existing rating
+        cursor.execute(
+            "UPDATE ratings SET rating = ? WHERE id = ?",
+            (rating, existing['id'])
+        )
+    else:
+        # Insert new rating
+        cursor.execute(
+            "INSERT INTO ratings (user_id, journal_name, rating) VALUES (?, ?, ?)",
+            (user_id, journal, rating)
+        )
+    
+    conn.commit()
+    conn.close()
+
 # Initialize global variables and models
+# Journal ratings storage
+journal_ratings = defaultdict(list)  # {journal_name: [ratings]}
+
 def initialize_models():
     # Download necessary NLTK data
     nltk.download('stopwords')
@@ -35,6 +217,50 @@ def initialize_models():
     model = SentenceTransformer('allenai/specter')
     
     return nlp, model
+
+# Function to load existing ratings from file
+def load_ratings():
+    global journal_ratings
+    try:
+        if os.path.exists('journal_ratings.json'):
+            with open('journal_ratings.json', 'r') as f:
+                ratings_data = json.load(f)
+                journal_ratings = defaultdict(list, ratings_data)
+            print(f"Loaded ratings for {len(journal_ratings)} journals")
+    except Exception as e:
+        print(f"Error loading ratings: {e}")
+        journal_ratings = defaultdict(list)
+
+# Function to save ratings to file
+def save_ratings():
+    try:
+        with open('journal_ratings.json', 'w') as f:
+            json.dump(journal_ratings, f)
+    except Exception as e:
+        print(f"Error saving ratings: {e}")
+
+# Function to boost scores based on ratings
+def apply_rating_boost(journal_matches, rating_weight=0.1):
+    """Apply a boost to journal scores based on user ratings"""
+    boosted_matches = []
+    
+    for journal, score, url in journal_matches:
+        # Get average rating for this journal (if any)
+        ratings = journal_ratings.get(journal, [])
+        if ratings:
+            avg_rating = sum(ratings) / len(ratings)
+            # Normalize rating to 0-1 scale (from 1-5 scale)
+            normalized_rating = (avg_rating - 1) / 4
+            # Apply weighted boost
+            boosted_score = score + (normalized_rating * rating_weight)
+        else:
+            boosted_score = score
+            
+        boosted_matches.append((journal, boosted_score, url))
+    
+    # Sort by boosted score
+    boosted_matches.sort(key=lambda x: x[1], reverse=True)
+    return boosted_matches
 
 # Updated function to fetch data from OpenAlex API
 def fetch_journal_data(query="computer science", limit=100):
@@ -230,9 +456,119 @@ def find_matching_journals(paper_embedding, journals_data, model, top_n=5):
     # Sort by similarity score and return top N
     journal_scores.sort(key=lambda x: x[1], reverse=True)
     return journal_scores[:top_n]
+
+# Initialize database
+init_db()
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Basic validation
+        if not username or not email or not password:
+            flash('All fields are required', 'danger')
+            return render_template('register.html')
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
+            return render_template('register.html')
+        
+        # Create user
+        success, message = create_user(username, email, password)
+        
+        if success:
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(f'Registration failed: {message}', 'danger')
+            return render_template('register.html')
     
-# Initialize models at startup
-nlp, model = initialize_models()
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # Validate credentials
+        success, user_id = verify_user(username, password)
+        
+        if success:
+            # Create a User object
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,))
+            user_data = cursor.fetchone()
+            conn.close()
+            
+            user = User(user_data['id'], user_data['username'], user_data['email'])
+            
+            # Login user with Flask-Login
+            login_user(user)
+            
+            # Also create session for legacy support
+            session_id = create_session(user_id)
+            session['session_id'] = session_id
+            session['username'] = username
+            
+            flash('Login successful!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid username or password', 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    # Logout using Flask-Login
+    logout_user()
+    
+    # Clear session data
+    session.clear()
+    
+    flash('You have been logged out', 'info')
+    return redirect(url_for('index'))
+
+@app.route('/profile')
+@login_required
+def profile():
+    # Get user information from Flask-Login
+    user = current_user
+    
+    # Get user's ratings
+    ratings = get_user_ratings(user.id)
+    
+    return render_template('profile.html', user=user, ratings=ratings)
+
+@app.route('/api/rate-journal', methods=['POST'])
+def rate_journal():
+    try:
+        # Check if user is logged in
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.json
+        journal = data.get('journal')
+        rating = data.get('rating')
+        
+        if not journal or not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+            return jsonify({'error': 'Invalid rating data'}), 400
+            
+        # Store the rating associated with the user
+        save_rating_to_db(current_user.id, journal, rating)
+        
+        # Also store in the global ratings dictionary for backward compatibility
+        journal_ratings[journal].append(rating)
+        save_ratings()
+        
+        return jsonify({'success': True, 'message': 'Rating saved'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recommend', methods=['POST'])
 def recommend_journals():
@@ -241,6 +577,7 @@ def recommend_journals():
         data = request.json
         title = data.get('title', '')
         abstract = data.get('abstract', '')
+        include_ratings = data.get('includeRatings', False)
         
         # Process paper with enhanced similarity approach
         paper_data = process_paper_for_similarity(title, abstract, nlp, model)
@@ -257,6 +594,10 @@ def recommend_journals():
         
         # Find matching journals with optimized similarity approach
         journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
+        
+        # Apply rating boost if requested
+        if include_ratings:
+            journal_matches = apply_rating_boost(journal_matches)
         
         # Format recommendations
         recommendations = [
@@ -266,53 +607,7 @@ def recommend_journals():
                 'match_percentage': f"{float(score) * 100:.1f}%",
                 'url': url or '#'  # Include URL, default to # if not available
             }
-            for journal, score, url in journal_matches  # Now unpacking 3 values
-        ]
-        
-        return jsonify({
-            'recommendations': recommendations,
-            'paper': {
-                'title': title,
-                'abstract': abstract,
-                'topics': paper_data["topics"]
-            }
-        })
-    
-    except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'recommendations': []
-        }), 500
-    try:
-        # Get data from request
-        data = request.json
-        title = data.get('title', '')
-        abstract = data.get('abstract', '')
-        
-        # Process paper with enhanced similarity approach
-        paper_data = process_paper_for_similarity(title, abstract, nlp, model)
-        
-        # Fetch journal data using the extracted topics
-        search_query = " ".join(paper_data["topics"][:3])  # Use top 3 topics for search
-        journals_data = fetch_journal_data(search_query)
-        
-        if not journals_data:
-            return jsonify({
-                'error': 'Failed to fetch journal data',
-                'recommendations': []
-            }), 500
-        
-        # Find matching journals with optimized similarity approach
-        journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
-        
-        # Format recommendations
-        recommendations = [
-            {
-                'journal': journal,
-                'score': float(score),  # Convert numpy float to Python float for JSON
-                'match_percentage': f"{float(score) * 100:.1f}%"
-            }
-            for journal, score in journal_matches
+            for journal, score, url in journal_matches
         ]
         
         return jsonify({
@@ -344,9 +639,12 @@ def api_info():
         "message": "Journal Recommendation API is running",
         "endpoints": {
             "/api/recommend": "POST - Get journal recommendations based on paper title and abstract",
-            "/api/health": "GET - Check API health status"
+            "/api/health": "GET - Check API health status",
+            "/api/rate-journal": "POST - Save user ratings for journal recommendations"
         }
     })
 
 if __name__ == '__main__':
+    load_ratings()
+    nlp, model = initialize_models()  # Initialize models at startup
     app.run(debug=True, host='0.0.0.0', port=5000)

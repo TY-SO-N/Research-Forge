@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - NLP Research Forge</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #032b4a;
+            color: white;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 {
+            color: white;
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+        h2 {
+            color: #ffd700;
+            margin-top: 0;
+        }
+        .form-container {
+            background-color: #05396b;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        button {
+            background-color: #ffd700;
+            color: #032b4a;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #e6c200;
+        }
+        .login-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .login-link a {
+            color: #ffd700;
+            text-decoration: none;
+        }
+        .login-link a:hover {
+            text-decoration: underline;
+        }
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        .flash-message {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .flash-message.success {
+            background-color: rgba(0, 128, 0, 0.2);
+            border: 1px solid #008000;
+        }
+        .flash-message.danger {
+            background-color: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+        }
+        .flash-message.warning {
+            background-color: rgba(255, 215, 0, 0.2);
+            border: 1px solid #ffd700;
+        }
+        .flash-message.info {
+            background-color: rgba(0, 191, 255, 0.2);
+            border: 1px solid #00bfff;
+        }
+        .back-link {
+            display: block;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .back-link a {
+            color: #ffd700;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NLP Research Forge</h1>
+        <h2>Register</h2>
+    </header>
+    
+    {% if get_flashed_messages() %}
+    <div class="flash-messages">
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="flash-message {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <div class="form-container">
+        <form method="POST" action="{{ url_for('register') }}">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+            
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+            
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            
+            <label for="confirm_password">Confirm Password:</label>
+            <input type="password" id="confirm_password" name="confirm_password" required>
+            
+            <button type="submit">Register</button>
+        </form>
+        
+        <div class="login-link">
+            Already have an account? <a href="{{ url_for('login') }}">Login here</a>
+        </div>
+    </div>
+    
+    <div class="back-link">
+        <a href="{{ url_for('index') }}">Back to Journal Recommendations</a>
+    </div>
+</body>
+</html>
