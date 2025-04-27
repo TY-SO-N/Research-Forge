@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NLP Research Forge</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #032b4a;
+            color: white;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 {
+            color: white;
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+        h2 {
+            color: #ffd700;
+            margin-top: 0;
+        }
+        .input-section {
+            background-color: #05396b;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        textarea {
+            height: 150px;
+        }
+        button {
+            background-color: #ffd700;
+            color: #032b4a;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #e6c200;
+        }
+        .results-section {
+            background-color: #05396b;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        .journal-card {
+            background-color: #0a4d7a;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .journal-name {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .journal-link {
+            color: #ffd700;
+            text-decoration: none;
+            display: block;
+            transition: color 0.3s;
+        }
+        .journal-link:hover {
+            color: #e6c200;
+            text-decoration: underline;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .topics {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        .topics span {
+            display: inline-block;
+            background-color: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .view-paper-btn {
+            background-color: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            border: 1px solid #ffd700;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-size: 12px;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .view-paper-btn:hover {
+            background-color: rgba(255, 215, 0, 0.4);
+        }
+        /* Star Rating Styles */
+        .star-rating {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        .rating-title {
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .stars {
+            display: flex;
+            gap: 5px;
+        }
+        .star {
+            color: #ccc;
+            font-size: 20px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .star:hover, .star.active, .star.rated {
+            color: #ffd700;
+        }
+        .rating-feedback {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #8cff8c;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .rating-feedback.visible {
+            opacity: 1;
+        }
+        .previous-rating {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: #05396b;
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        .user-welcome {
+            color: #ffd700;
+            font-weight: bold;
+        }
+        .nav-links {
+            display: flex;
+            gap: 10px;
+        }
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            transition: background-color 0.3s;
+        }
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        .flash-message {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .flash-message.success {
+            background-color: rgba(0, 128, 0, 0.2);
+            border: 1px solid #008000;
+        }
+        .flash-message.danger {
+            background-color: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+        }
+        .flash-message.warning {
+            background-color: rgba(255, 215, 0, 0.2);
+            border: 1px solid #ffd700;
+        }
+        .flash-message.info {
+            background-color: rgba(0, 191, 255, 0.2);
+            border: 1px solid #00bfff;
+        }
+        /* Additional styles for journal items */
+        .journal-item {
+            background-color: #0a4d7a;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .journal-rating {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .paper-rating {
+            display: flex;
+            gap: 5px;
+            margin-top: 15px;
+            margin-bottom: 15px;
+        }
+        .paper-rating-title {
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NLP Research Forge</h1>
+        <h2>Journal Recommendation System</h2>
+    </header>
+    
+    <!-- Navigation bar -->
+    <div class="nav-bar">
+        {% if session.username %}
+            <div class="user-welcome">Welcome, {{ session.username }}!</div>
+            <div class="nav-links">
+                <a href="{{ url_for('profile') }}" class="nav-link">Profile</a>
+                <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+            </div>
+        {% else %}
+            <div class="nav-links">
+                <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+                <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Flash messages -->
+    {% if get_flashed_messages() %}
+    <div class="flash-messages">
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="flash-message {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="input-section">
+        <h3>Submit Your Research Paper</h3>
+        <form id="paperForm">
+            <label for="paperTitle">Paper Title:</label>
+            <input type="text" id="paperTitle" name="paperTitle" placeholder="Enter the title of your research paper" required>
+            
+            <label for="paperAbstract">Abstract:</label>
+            <textarea id="paperAbstract" name="paperAbstract" placeholder="Paste your paper's abstract here..." required></textarea>
+            
+            <!-- Paper rating section -->
+            <div class="paper-rating-title">Rate your paper (optional):</div>
+            <div class="paper-rating">
+                <span class="star-rating" onclick="ratePaper(1)">★</span>
+                <span class="star-rating" onclick="ratePaper(2)">★</span>
+                <span class="star-rating" onclick="ratePaper(3)">★</span>
+                <span class="star-rating" onclick="ratePaper(4)">★</span>
+                <span class="star-rating" onclick="ratePaper(5)">★</span>
+            </div>
+            
+            <button type="submit">Find Matching Journals</button>
+        </form>
+    </div>
+    
+    <div class="loading" id="loadingIndicator">
+        <div class="spinner"></div>
+        <p>Analyzing your paper and finding matching journals...</p>
+    </div>
+    
+    <div class="results-section" id="resultsSection">
+        <h3>Recommended Journals</h3>
+        <div id="journalResults"></div>
+        
+        <div class="topics-section">
+            <h4>Detected Topics:</h4>
+            <div id="topicsContainer"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Utility function to sanitize URLs
+        function sanitizeUrl(url) {
+            // Fix URLs that have duplicated domain
+            if (url && url.includes('openalex.org/https://openalex.org/')) {
+                return url.replace('openalex.org/https://openalex.org/', 'openalex.org/');
+            }
+            // Fix URLs that start with 'https://https://'
+            if (url && url.startsWith('https://https://')) {
+                return url.replace('https://https://', 'https://');
+            }
+            return url;
+        }
+        
+        // Function to retrieve journal ratings from localStorage
+        function getJournalRatings() {
+            const ratingsJson = localStorage.getItem('journalRatings');
+            return ratingsJson ? JSON.parse(ratingsJson) : {};
+        }
+        
+        // Function to save a journal rating
+        function saveJournalRating(journalName, rating) {
+            const ratings = getJournalRatings();
+            ratings[journalName] = rating;
+            localStorage.setItem('journalRatings', JSON.stringify(ratings));
+        }
+        
+        // Function to set rating for a specific element
+        function setRatingForElement(container, rating) {
+            const stars = container.querySelectorAll('.star-rating');
+            stars.forEach((star, index) => {
+                if (index < rating) {
+                    star.classList.add('rated');
+                } else {
+                    star.classList.remove('rated');
+                }
+            });
+        }
+        
+        // Function to set rating for a specific type (paper or journal)
+        function setRating(type, rating) {
+            const starsContainer = document.querySelector(`.${type}-rating`);
+            if (starsContainer) {
+                setRatingForElement(starsContainer, rating);
+            }
+        }
+        
+        // Function to rate a paper
+        function ratePaper(rating) {
+            const title = document.getElementById('paperTitle').value;
+            const abstract = document.getElementById('paperAbstract').value;
+            
+            // Visual feedback
+            setRating('paper', rating);
+            
+            // Send to server
+            fetch('/api/rate-paper', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: title,
+                    abstract: abstract,
+                    rating: rating
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Paper rating saved successfully');
+                    // Store in session storage for immediate persistence
+                    sessionStorage.setItem('paperRating', rating);
+                } else {
+                    console.error('Error saving paper rating:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        // Function to rate a journal
+        function rateJournal(element, rating) {
+            const journalName = element.closest('.journal-item').getAttribute('data-journal-name');
+            const starsContainer = element.closest('.journal-rating');
+            
+            // Visual feedback
+            setRatingForElement(starsContainer, rating);
+            
+            // Send to server
+            fetch('/api/rate-journal', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    journal: journalName,
+                    rating: rating
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Journal rating saved successfully');
+                    // Store in session storage for immediate persistence
+                    sessionStorage.setItem(`journalRating_${journalName}`, rating);
+                } else {
+                    console.error('Error saving journal rating:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        // Create star rating component
+        function createStarRating(journalName, container, serverRating = 0) {
+            // First check if we have a server-provided rating
+            let userRating = serverRating;
+            
+            // If no server rating provided, check localStorage and sessionStorage
+            if (!userRating) {
+                // Check sessionStorage first (more recent)
+                userRating = parseInt(sessionStorage.getItem(`journalRating_${journalName}`)) || 0;
+                
+                // If not in sessionStorage, check localStorage
+                if (!userRating) {
+                    const localRatings = getJournalRatings();
+                    userRating = localRatings[journalName] || 0;
+                }
+            }
+            
+            const ratingContainer = document.createElement('div');
+            ratingContainer.className = 'star-rating';
+            
+            const ratingTitle = document.createElement('div');
+            ratingTitle.className = 'rating-title';
+            ratingTitle.textContent = 'Rate this recommendation:';
+            
+            if (userRating > 0) {
+                const prevRatingSpan = document.createElement('span');
+                prevRatingSpan.className = 'previous-rating';
+                prevRatingSpan.textContent = `(Previously rated: ${userRating} star${userRating !== 1 ? 's' : ''})`;
+                ratingTitle.appendChild(prevRatingSpan);
+            }
+            
+            const starsContainer = document.createElement('div');
+            starsContainer.className = 'stars';
+            
+            const feedbackMsg = document.createElement('div');
+            feedbackMsg.className = 'rating-feedback';
+            feedbackMsg.textContent = 'Thanks for your feedback!';
+            
+            // Create 5 stars
+            for (let i = 1; i <= 5; i++) {
+                const star = document.createElement('span');
+                star.className = 'star';
+                // Set active state based on user's previous rating
+                if (i <= userRating) {
+                    star.classList.add('active');
+                }
+                star.innerHTML = '★';
+                star.dataset.value = i;
+                
+                star.addEventListener('click', function() {
+                    const value = parseInt(this.dataset.value);
+                    
+                    // Update visual state
+                    const stars = starsContainer.querySelectorAll('.star');
+                    stars.forEach(s => {
+                        s.classList.toggle('active', parseInt(s.dataset.value) <= value);
+                    });
+                    
+                    // Save rating in localStorage
+                    saveJournalRating(journalName, value);
+                    
+                    // Store in sessionStorage for immediate persistence
+                    sessionStorage.setItem(`journalRating_${journalName}`, value);
+                    
+                    // Show feedback message
+                    feedbackMsg.classList.add('visible');
+                    setTimeout(() => {
+                        feedbackMsg.classList.remove('visible');
+                    }, 2000);
+                    
+                    // Send rating to server
+                    fetch('/api/rate-journal', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            journal: journalName,
+                            rating: value
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log("Rating saved on server");
+                        } else {
+                            console.error("Failed to save rating on server:", data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error saving rating:', error));
+                });
+                
+                starsContainer.appendChild(star);
+            }
+            
+            ratingContainer.appendChild(ratingTitle);
+            ratingContainer.appendChild(starsContainer);
+            ratingContainer.appendChild(feedbackMsg);
+            container.appendChild(ratingContainer);
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if we have a paper that was just rated
+            const paperTitle = document.getElementById('paperTitle')?.value;
+            
+            if (paperTitle) {
+                // First check sessionStorage (most recent)
+                const sessionRating = parseInt(sessionStorage.getItem('paperRating')) || 0;
+                
+                if (sessionRating > 0) {
+                    setRating('paper', sessionRating);
+                } else {
+                    // If not in sessionStorage, check server
+                    fetch(`/api/get-paper-rating?title=${encodeURIComponent(paperTitle)}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.rating > 0) {
+                                // Set the stars to match the saved rating
+                                setRating('paper', data.rating);
+                            }
+                        })
+                        .catch(error => console.error('Error loading paper rating:', error));
+                }
+            }
+            
+            // Load ratings for all displayed journals if any
+            const journalElements = document.querySelectorAll('.journal-item');
+            journalElements.forEach(element => {
+                const journalName = element.getAttribute('data-journal-name');
+                if (journalName) {
+                    // First check sessionStorage (most recent)
+                    const sessionRating = parseInt(sessionStorage.getItem(`journalRating_${journalName}`)) || 0;
+                    
+                    if (sessionRating > 0) {
+                        const starsContainer = element.querySelector('.journal-rating');
+                        if (starsContainer) {
+                            setRatingForElement(starsContainer, sessionRating);
+                        }
+                    } else {
+                        // If not in sessionStorage, check server
+                        fetch(`/api/get-journal-rating?journal=${encodeURIComponent(journalName)}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.rating > 0) {
+                                    // Find the star container for this journal
+                                    const starsContainer = element.querySelector('.journal-rating');
+                                    if (starsContainer) {
+                                        // Set the stars to match the saved rating
+                                        setRatingForElement(starsContainer, data.rating);
+                                    }
+                                }
+                            })
+                            .catch(error => console.error(`Error loading rating for ${journalName}:`, error));
+                    }
+                }
+            });
+        });
+        
+        document.getElementById('paperForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const title = document.getElementById('paperTitle').value;
+            const abstract = document.getElementById('paperAbstract').value;
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            
+            try {
+                // Use relative path for API URL
+                const apiUrl = '/api/recommend';
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        abstract: abstract,
+                        includeRatings: true // Tell backend to consider ratings
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Hide loading and show results
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('resultsSection').style.display = 'block';
+                
+                // Display recommendations with clickable links
+                const resultsContainer = document.getElementById('journalResults');
+                resultsContainer.innerHTML = '';
+                
+                if (data.recommendations && data.recommendations.length > 0) {
+                    data.recommendations.forEach(journal => {
+                        // Create journal card using the journal-item structure for compatibility with rating system
+                        const journalCard = document.createElement('div');
+                        journalCard.className = 'journal-item';
+                        journalCard.setAttribute('data-journal-name', journal.journal);
+                        
+                        // Create journal name as a link
+                        const sanitizedUrl = sanitizeUrl(journal.url);
+                        const journalLink = sanitizedUrl && sanitizedUrl !== '#' ? 
+                            `<a href="${sanitizedUrl}" class="journal-link" target="_blank">${journal.journal}</a>` : 
+                            `<span class="journal-name">${journal.journal}</span>`;
+                        
+                        // Add view paper button if URL is available
+                        const viewPaperBtn = sanitizedUrl && sanitizedUrl !== '#' ? 
+                            `<a href="${sanitizedUrl}" class="view-paper-btn" target="_blank">View Paper</a>` : '';
+                        
+                        journalCard.innerHTML = `
+                            <div class="journal-name">${journalLink}</div>
+                            ${viewPaperBtn}
+                            <div class="journal-rating">
+                                <span class="star-rating" onclick="rateJournal(this, 1)">★</span>
+                                <span class="star-rating" onclick="rateJournal(this, 2)">★</span>
+                                <span class="star-rating" onclick="rateJournal(this, 3)">★</span>
+                                <span class="star-rating" onclick="rateJournal(this, 4)">★</span>
+                                <span class="star-rating" onclick="rateJournal(this, 5)">★</span>
+                            </div>
+                        `;
+                        
+                        // Set initial rating if available
+                        const serverRating = journal.user_rating || 0;
+                        if (serverRating > 0) {
+                            const starsContainer = journalCard.querySelector('.journal-rating');
+                            setRatingForElement(starsContainer, serverRating);
+                        }
+                        
+                        resultsContainer.appendChild(journalCard);
+                    });
+                } else {
+                    resultsContainer.innerHTML = '<p>No matching journals found. Try adjusting your paper content.</p>';
+                }
+                
+                // Display topics
+                const topicsContainer = document.getElementById('topicsContainer');
+                topicsContainer.innerHTML = '';
+                
+                if (data.paper && data.paper.topics && data.paper.topics.length > 0) {
+                    data.paper.topics.forEach(topic => {
+                        const topicSpan = document.createElement('span');
+                        topicSpan.textContent = topic;
+                        topicsContainer.appendChild(topicSpan);
+                    });
+                } else {
+                    topicsContainer.innerHTML = '<p>No specific topics detected.</p>';
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loadingIndicator').style.display = 'none';
+                alert('An error occurred while processing your request. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -144,15 +144,12 @@ def get_specific_paper_rating(user_id, paper_title):
     return result['rating'] if result else 0
 
 @app.route('/api/rate-paper', methods=['POST'])
+@login_required
 def rate_paper():
     try:
-        # Check if user is logged in
-        if not current_user.is_authenticated:
-            return jsonify({'error': 'Authentication required'}), 401
-        
         data = request.json
         paper_title = data.get('title')
-        paper_abstract = data.get('abstract')
+        paper_abstract = data.get('abstract', '')  # Provide default empty abstract if missing
         rating = data.get('rating')
         
         if not paper_title or not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
@@ -184,7 +181,45 @@ def get_paper_ratings():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/get-paper-rating', methods=['GET'])
+@login_required
+def get_paper_rating():
+    try:
+        paper_title = request.args.get('title')
+        if not paper_title:
+            return jsonify({'error': 'Paper title is required'}), 400
+        
+        rating = get_specific_paper_rating(current_user.id, paper_title)
+        
+        return jsonify({'rating': rating})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
+@app.route('/api/get-journal-rating', methods=['GET'])
+@login_required
+def get_journal_rating():
+    try:
+        journal_name = request.args.get('journal')
+        if not journal_name:
+            return jsonify({'error': 'Journal name is required'}), 400
+        
+        rating = get_specific_journal_rating(current_user.id, journal_name)
+        
+        return jsonify({'rating': rating})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def get_specific_journal_rating(user_id, journal_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT rating FROM ratings WHERE user_id = ? AND journal_name = ?",
+        (user_id, journal_name)
+    )
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result['rating'] if result else 0
 
 # User loader function for Flask-Login
 @login_manager.user_loader
@@ -432,7 +467,7 @@ def generate_optimized_embedding(text, model):
     return normalized_embedding.reshape(1, -1)
 
 # Extract key topics from text using spaCy
-def extract_topics(text, nlp, top_n=5):
+def extract_topics(text, nlp, top_n=10):
     doc = nlp(text)
     
     # Extract noun phrases as potential topics
@@ -648,16 +683,14 @@ def profile():
     
     # Get user's ratings
     ratings = get_user_ratings(user.id)
+    paper_ratings = get_user_paper_ratings(user.id)
     
-    return render_template('profile.html', user=user, ratings=ratings)
+    return render_template('profile.html', user=user, ratings=ratings, paper_ratings=paper_ratings)
 
 @app.route('/api/rate-journal', methods=['POST'])
+@login_required
 def rate_journal():
     try:
-        # Check if user is logged in
-        if not current_user.is_authenticated:
-            return jsonify({'error': 'Authentication required'}), 401
-        
         data = request.json
         journal = data.get('journal')
         rating = data.get('rating')
@@ -758,100 +791,6 @@ def recommend_journals():
             'error': str(e),
             'recommendations': []
         }), 500
-    try:
-        # Get data from request
-        data = request.json
-        title = data.get('title', '')
-        abstract = data.get('abstract', '')
-        include_ratings = data.get('includeRatings', False)
-        
-        # Process paper with enhanced similarity approach
-        paper_data = process_paper_for_similarity(title, abstract, nlp, model)
-        
-        # Fetch journal data using the extracted topics
-        search_query = " ".join(paper_data["topics"][:3])  # Use top 3 topics for search
-        journals_data = fetch_journal_data(search_query)
-        
-        if not journals_data:
-            return jsonify({
-                'error': 'Failed to fetch journal data',
-                'recommendations': []
-            }), 500
-        
-        # Find matching journals with optimized similarity approach
-        journal_matches = find_matching_journals(paper_data["embedding"], journals_data, model)
-        
-        # Apply rating boost if requested
-        if include_ratings:
-            journal_matches = apply_rating_boost(journal_matches)
-        
-        user_ratings = {}
-        if current_user.is_authenticated:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT journal_name, rating FROM ratings WHERE user_id = ?",
-                (current_user.id,)
-            )
-            for row in cursor.fetchall():
-                user_ratings[row['journal_name']] = row['rating']
-            conn.close()
-        
-        # Format recommendations
-        recommendations = [
-            {
-                'journal': journal,
-                'score': float(score),
-                'match_percentage': f"{float(score) * 100:.1f}%",
-                'url': url or '#',
-                'user_rating': user_ratings.get(journal, 0)  # Add this line
-            }
-            for journal, score, url in journal_matches
-        ]
-        
-        return jsonify({
-            'recommendations': recommendations,
-            'paper': {
-                'title': title,
-                'abstract': abstract,
-                'topics': paper_data["topics"]
-            }
-        })
-    
-    except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'recommendations': []
-        }), 500
-
-// Function to submit paper rating
-function ratePaper(title, abstract, rating) {
-    fetch('/api/rate-paper', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            title: title,
-            abstract: abstract,
-            rating: rating
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Rating saved successfully!');
-            // Update UI to show the new rating
-            document.getElementById('paper-rating-display').innerText = rating;
-        } else {
-            alert('Error saving rating: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error saving rating. Please try again.');
-    });
-}
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -868,9 +807,19 @@ def api_info():
         "endpoints": {
             "/api/recommend": "POST - Get journal recommendations based on paper title and abstract",
             "/api/health": "GET - Check API health status",
-            "/api/rate-journal": "POST - Save user ratings for journal recommendations"
+            "/api/rate-journal": "POST - Save user ratings for journal recommendations",
+            "/api/rate-paper": "POST - Save user ratings for papers",
+            "/api/get-paper-ratings": "GET - Get all user's paper ratings",
+            "/api/get-paper-rating": "GET - Get rating for a specific paper",
+            "/api/get-journal-rating": "GET - Get rating for a specific journal"
         }
     })
+
+@app.route('/rated-papers', methods=['GET'])
+@login_required
+def rated_papers():
+    paper_ratings = get_user_paper_ratings(current_user.id)
+    return render_template('rated_papers.html', paper_ratings=paper_ratings)
 
 if __name__ == '__main__':
     load_ratings()

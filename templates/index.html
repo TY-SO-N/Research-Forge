@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NLP Research Forge</title>
+    <title>Quick Publish</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -172,86 +172,82 @@
             font-size: 12px;
             color: rgba(255, 255, 255, 0.7);
         }
+        .nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: #05396b;
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        .user-welcome {
+            color: #ffd700;
+            font-weight: bold;
+        }
+        .nav-links {
+            display: flex;
+            gap: 10px;
+        }
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            transition: background-color 0.3s;
+        }
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        .flash-message {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .flash-message.success {
+            background-color: rgba(0, 128, 0, 0.2);
+            border: 1px solid #008000;
+        }
+        .flash-message.danger {
+            background-color: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+        }
+        .flash-message.warning {
+            background-color: rgba(255, 215, 0, 0.2);
+            border: 1px solid #ffd700;
+        }
+        .flash-message.info {
+            background-color: rgba(0, 191, 255, 0.2);
+            border: 1px solid #00bfff;
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1>NLP Research Forge</h1>
+        <h1>Quick Publish</h1>
         <h2>Journal Recommendation System</h2>
     </header>
     
-    <!-- Add this navigation section after the header in your index.html -->
-<div class="nav-bar">
-    {% if session.username %}
-        <div class="user-welcome">Welcome, {{ session.username }}!</div>
-        <div class="nav-links">
-            <a href="{{ url_for('profile') }}" class="nav-link">Profile</a>
-            <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
-        </div>
-    {% else %}
-        <div class="nav-links">
-            <a href="{{ url_for('login') }}" class="nav-link">Login</a>
-            <a href="{{ url_for('register') }}" class="nav-link">Register</a>
-        </div>
-    {% endif %}
-</div>
+    <!-- Navigation bar -->
+    <div class="nav-bar">
+        {% if session.username %}
+            <div class="user-welcome">Welcome, {{ session.username }}!</div>
+            <div class="nav-links">
+                <a href="{{ url_for('profile') }}" class="nav-link">Profile</a>
+                <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+            </div>
+        {% else %}
+            <div class="nav-links">
+                <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+                <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+            </div>
+        {% endif %}
+    </div>
 
-<!-- Add this CSS to your existing styles in index.html -->
-<style>
-    .nav-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        background-color: #05396b;
-        padding: 10px 20px;
-        border-radius: 5px;
-    }
-    .user-welcome {
-        color: #ffd700;
-        font-weight: bold;
-    }
-    .nav-links {
-        display: flex;
-        gap: 10px;
-    }
-    .nav-link {
-        color: white;
-        text-decoration: none;
-        padding: 5px 10px;
-        border-radius: 3px;
-        transition: background-color 0.3s;
-    }
-    .nav-link:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-    }
-    .flash-messages {
-        margin-bottom: 20px;
-    }
-    .flash-message {
-        padding: 10px;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
-    .flash-message.success {
-        background-color: rgba(0, 128, 0, 0.2);
-        border: 1px solid #008000;
-    }
-    .flash-message.danger {
-        background-color: rgba(255, 0, 0, 0.2);
-        border: 1px solid #ff0000;
-    }
-    .flash-message.warning {
-        background-color: rgba(255, 215, 0, 0.2);
-        border: 1px solid #ffd700;
-    }
-    .flash-message.info {
-        background-color: rgba(0, 191, 255, 0.2);
-        border: 1px solid #00bfff;
-    }
-</style>
-
-    <!-- Add this below the header and nav-bar but before the input-section -->
+    <!-- Flash messages -->
     {% if get_flashed_messages() %}
     <div class="flash-messages">
         {% for category, message in get_flashed_messages(with_categories=true) %}
@@ -318,9 +314,15 @@
         }
         
         // Create star rating component
-        function createStarRating(journalName, container) {
-            const ratings = getJournalRatings();
-            const previousRating = ratings[journalName] || 0;
+        function createStarRating(journalName, container, serverRating = 0) {
+            // First check if we have a server-provided rating
+            let userRating = serverRating;
+            
+            // If no server rating provided, check localStorage
+            if (!userRating) {
+                const localRatings = getJournalRatings();
+                userRating = localRatings[journalName] || 0;
+            }
             
             const ratingContainer = document.createElement('div');
             ratingContainer.className = 'star-rating';
@@ -329,10 +331,10 @@
             ratingTitle.className = 'rating-title';
             ratingTitle.textContent = 'Rate this recommendation:';
             
-            if (previousRating > 0) {
+            if (userRating > 0) {
                 const prevRatingSpan = document.createElement('span');
                 prevRatingSpan.className = 'previous-rating';
-                prevRatingSpan.textContent = `(Previously rated: ${previousRating} star${previousRating !== 1 ? 's' : ''})`;
+                prevRatingSpan.textContent = `(Previously rated: ${userRating} star${userRating !== 1 ? 's' : ''})`;
                 ratingTitle.appendChild(prevRatingSpan);
             }
             
@@ -346,7 +348,11 @@
             // Create 5 stars
             for (let i = 1; i <= 5; i++) {
                 const star = document.createElement('span');
-                star.className = 'star' + (i <= previousRating ? ' active' : '');
+                star.className = 'star';
+                // Set active state based on user's previous rating
+                if (i <= userRating) {
+                    star.classList.add('active');
+                }
                 star.innerHTML = '★';
                 star.dataset.value = i;
                 
@@ -359,7 +365,7 @@
                         s.classList.toggle('active', parseInt(s.dataset.value) <= value);
                     });
                     
-                    // Save rating
+                    // Save rating in localStorage
                     saveJournalRating(journalName, value);
                     
                     // Show feedback message
@@ -378,7 +384,16 @@
                             journal: journalName,
                             rating: value
                         })
-                    }).catch(error => console.error('Error saving rating:', error));
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log("Rating saved on server");
+                        } else {
+                            console.error("Failed to save rating on server:", data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error saving rating:', error));
                 });
                 
                 starsContainer.appendChild(star);
@@ -446,8 +461,9 @@
                             ${viewPaperBtn}
                         `;
                         
-                        // Add star rating system
-                        createStarRating(journal.journal, journalCard);
+                        // Add star rating system - pass the server rating if available
+                        const serverRating = journal.user_rating || 0;
+                        createStarRating(journal.journal, journalCard, serverRating);
                         
                         resultsContainer.appendChild(journalCard);
                     });
