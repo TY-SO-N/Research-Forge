@@ -6,15 +6,15 @@
 ![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-Machine_Learning-F7931E?style=for-the-badge&logo=scikit-learn)
 ![Sentence-Transformers](https://img.shields.io/badge/HuggingFace-Sentence_Transformers-ffcc00?style=for-the-badge&logo=huggingface)
 
-**Research-Forge** is an intelligent academic publishing assistant designed to bridge the gap between researchers and their ideal publication venues. By leveraging state-of-the-art NLP models (AllenAI's SPECTER) and a feedback-driven recommendation pipeline, this platform helps scientists find the most relevant journals for their abstracts in milliseconds.
+**Research-Forge** is an intelligent academic publishing assistant designed to bridge the gap between researchers and their ideal publication venues. By leveraging NLP models (AllenAI's SPECTER) and a feedback-driven recommendation pipeline, this platform helps users find the most relevant journals for their abstracts in milliseconds.
 
 ---
 
 ## 🎯 The Problem & The Solution
 
-**The Problem:** Researchers often spend weeks trying to find the appropriate journal for their niche work. Searching for keywords on publisher websites is tedious, inaccurate, and doesn't account for semantic meaning.
+**The Problem:** Researchers often spend a lot of time trying to find the appropriate journal/research paper for their niche work. Searching for appropriate journal/paper on publisher websites is tedious, inaccurate, and doesn't account for semantic meaning.
 
-**The Solution:** Research-Forge ingests a user's abstract, generates dense vector embeddings using specialized scientific NLP models, and calculates the cosine similarity against thousands of journals fetched via the OpenAlex API. Over time, user ratings dynamically adjust and boost recommendation scores.
+**The Solution:** Research-Forge ingests a user's input, generates dense vector embeddings using specialized scientific NLP models, and calculates the cosine similarity against hundreds of journals fetched via the OpenAlex API. Over time, user ratings dynamically adjust and boost recommendation scores.
 
 ---
 
